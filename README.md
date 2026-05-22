@@ -1,3 +1,42 @@
 # Study Notebook
 
-Initial repository setup. The PDF annotation MVP is implemented in the feature branch for issue #1.
+Study Notebook 是一个面向学生的 AI 学习笔记 Web MVP。本版本优先完成 PDF 导入、页面浏览和本地批注原型，为后续 Word、PPT、GPT 辅助学习、同步和带批注 PDF 导出打基础。
+
+## 安装与启动
+
+```bash
+npm install
+npm run dev
+```
+
+开发服务器启动后，按终端提示打开本地地址即可使用。
+
+## 已实现功能
+
+- React + TypeScript + Vite 项目结构
+- 上传 PDF 并在页面中渲染当前页
+- 上一页 / 下一页切换
+- 左侧页码缩略导航
+- 添加文本框，支持拖动、编辑文字、删除
+- 文本框字体大小、颜色、加粗设置
+- 荧光笔和画笔批注
+- 批注颜色、粗细、透明度设置
+- 橡皮擦删除文本框或笔迹
+- 使用 localStorage 自动保存 PDF 与批注，刷新后恢复
+- 导出当前项目批注 JSON
+
+## 使用说明
+
+1. 点击顶部的“上传 PDF”选择学习资料。
+2. 选择“文本”工具后在页面上点击即可添加文本框。
+3. 选择“荧光笔”或“画笔”后，在 PDF 页面上拖动即可批注。
+4. 选择文本框后，可以在工具栏修改字号、颜色、加粗，或删除文本框。
+5. 点击“导出 JSON”下载当前批注数据。
+
+## 后续计划
+
+- 支持 Word、PPT 导入
+- 接入 GPT 做内容总结、问答和复习卡片
+- 支持云端同步和多设备恢复
+- 导出带批注的 PDF
+- 增强缩略图预览和批注搜索
