@@ -8,6 +8,11 @@ import { downloadJson, fileToDataUrl } from './utils/download';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.mjs', import.meta.url).toString();
 
+type PageSize = { width: number; height: number };
+type DragState = { id: string; pageNumber: number; dx: number; dy: number } | null;
+
+const defaultPageSize: PageSize = { width: 720, height: 940 };
+
 const defaultProject = (): DocumentProject => {
   const now = new Date().toISOString();
   return { id: crypto.randomUUID(), name: 'Untitled PDF notebook', createdAt: now, updatedAt: now, pages: [] };
@@ -36,14 +41,19 @@ const pointsToPath = (points: number[]) => {
   return path;
 };
 
+function pageSummary(page: PageAnnotation) {
+  const textCount = page.textAnnotations.length;
+  const inkCount = page.drawingAnnotations.length;
+  if (!textCount && !inkCount) return '暂无笔记';
+  return `${textCount} 条文字 / ${inkCount} 条笔迹`;
+}
+
 export default function App() {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const stageRef = useRef<HTMLDivElement | null>(null);
+  const pageRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const [project, setProject] = useState<DocumentProject>(() => loadSavedProject() ?? defaultProject());
   const [pdfDataUrl, setPdfDataUrl] = useState<string | null>(() => loadSavedPdfDataUrl());
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
-  const [pageNumber, setPageNumber] = useState(1);
-  const [pageSize, setPageSize] = useState({ width: 720, height: 940 });
+  const [pageSizes, setPageSizes] = useState<Record<number, PageSize>>({});
   const [tool, setTool] = useState<ToolType>('select');
   const [color, setColor] = useState('#ffcc33');
   const [strokeWidth, setStrokeWidth] = useState(16);
@@ -53,8 +63,11 @@ export default function App() {
   const [bold, setBold] = useState(false);
   const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
   const [activeDrawing, setActiveDrawing] = useState<DrawingAnnotation | null>(null);
-  const [draggingText, setDraggingText] = useState<{ id: string; dx: number; dy: number } | null>(null);
-  const page = useMemo(() => ensurePage(project, pageNumber), [project, pageNumber]);
+  const [draggingText, setDraggingText] = useState<DragState>(null);
+
+  const notes = useMemo(() => {
+    return project.pages.flatMap((page) => page.textAnnotations.map((note) => ({ ...note, pageNumber: page.pageNumber })));
+  }, [project.pages]);
 
   useEffect(() => saveProject(project), [project]);
   useEffect(() => {
@@ -69,10 +82,7 @@ export default function App() {
         return;
       }
       const loaded = await pdfjsLib.getDocument(pdfDataUrl).promise;
-      if (!cancelled) {
-        setPdfDoc(loaded);
-        setPageNumber(1);
-      }
+      if (!cancelled) setPdfDoc(loaded);
     }
     loadPdf().catch(console.error);
     return () => {
@@ -80,101 +90,48 @@ export default function App() {
     };
   }, [pdfDataUrl]);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function renderPage() {
-      if (!pdfDoc || !canvasRef.current) return;
-      const pdfPage = await pdfDoc.getPage(pageNumber);
-      const viewport = pdfPage.getViewport({ scale: 1.25 });
-      const canvas = canvasRef.current;
-      const context = canvas.getContext('2d');
-      if (!context) return;
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      setPageSize({ width: viewport.width, height: viewport.height });
-      await pdfPage.render({ canvasContext: context, viewport }).promise;
-      if (cancelled) context.clearRect(0, 0, canvas.width, canvas.height);
-    }
-    renderPage().catch(console.error);
-    return () => {
-      cancelled = true;
-    };
-  }, [pdfDoc, pageNumber]);
-
   async function handleFileUpload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
     const dataUrl = await fileToDataUrl(file);
     setPdfDataUrl(dataUrl);
     setProject({ ...defaultProject(), name: file.name });
+    setPageSizes({});
     setSelectedTextId(null);
   }
 
-  function updateCurrentPage(nextPage: PageAnnotation) {
+  function updatePage(nextPage: PageAnnotation) {
     setProject((current) => upsertPage(current, nextPage));
   }
 
-  function handleLayerPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
-    const point = pointInElement(event, event.currentTarget);
-    if (tool === 'text') {
-      const annotation: TextAnnotation = { id: crypto.randomUUID(), pageNumber, x: point.x, y: point.y, width: 220, height: 88, text: '新文本', fontSize, color: textColor, bold };
-      updateCurrentPage({ ...page, textAnnotations: [...page.textAnnotations, annotation] });
-      setSelectedTextId(annotation.id);
-      setTool('select');
-      return;
-    }
-    if (tool === 'pen' || tool === 'highlight') {
-      const drawing: DrawingAnnotation = { id: crypto.randomUUID(), pageNumber, tool, points: [point.x, point.y], color, strokeWidth: tool === 'highlight' ? strokeWidth : Math.max(2, Math.round(strokeWidth / 3)), opacity: tool === 'highlight' ? opacity : Math.max(opacity, 0.75) };
-      setActiveDrawing(drawing);
-      event.currentTarget.setPointerCapture(event.pointerId);
-      return;
-    }
-    if (tool === 'eraser') {
-      eraseAt(point.x, point.y);
-      return;
-    }
-    setSelectedTextId(null);
+  function updateText(pageNumber: number, id: string, patch: Partial<TextAnnotation>) {
+    const page = ensurePage(project, pageNumber);
+    updatePage({ ...page, textAnnotations: page.textAnnotations.map((item) => (item.id === id ? { ...item, ...patch } : item)) });
   }
 
-  function handleLayerPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
-    const point = pointInElement(event, event.currentTarget);
-    if (activeDrawing) setActiveDrawing({ ...activeDrawing, points: [...activeDrawing.points, point.x, point.y] });
-    if (draggingText) {
-      const updatedTexts = page.textAnnotations.map((item) => item.id === draggingText.id ? { ...item, x: point.x - draggingText.dx, y: point.y - draggingText.dy } : item);
-      updateCurrentPage({ ...page, textAnnotations: updatedTexts });
-    }
-  }
-
-  function handleLayerPointerUp() {
-    if (activeDrawing && activeDrawing.points.length > 3) updateCurrentPage({ ...page, drawingAnnotations: [...page.drawingAnnotations, activeDrawing] });
-    setActiveDrawing(null);
-    setDraggingText(null);
-  }
-
-  function updateText(id: string, patch: Partial<TextAnnotation>) {
-    updateCurrentPage({ ...page, textAnnotations: page.textAnnotations.map((item) => (item.id === id ? { ...item, ...patch } : item)) });
-  }
-
-  function deleteText(id: string) {
-    updateCurrentPage({ ...page, textAnnotations: page.textAnnotations.filter((item) => item.id !== id) });
-    setSelectedTextId(null);
+  function deleteText(pageNumber: number, id: string) {
+    const page = ensurePage(project, pageNumber);
+    updatePage({ ...page, textAnnotations: page.textAnnotations.filter((item) => item.id !== id) });
+    if (selectedTextId === id) setSelectedTextId(null);
   }
 
   function applyTextStyle() {
-    if (selectedTextId) updateText(selectedTextId, { fontSize, color: textColor, bold });
+    const selected = notes.find((note) => note.id === selectedTextId);
+    if (selected) updateText(selected.pageNumber, selected.id, { fontSize, color: textColor, bold });
   }
 
-  function eraseAt(x: number, y: number) {
-    const hitText = page.textAnnotations.find((item) => x >= item.x && x <= item.x + item.width && y >= item.y && y <= item.y + item.height);
-    if (hitText) {
-      deleteText(hitText.id);
-      return;
-    }
-    const drawings = page.drawingAnnotations.filter((drawing) => !drawing.points.some((point, index) => index % 2 === 0 && Math.hypot(point - x, drawing.points[index + 1] - y) < Math.max(12, drawing.strokeWidth)));
-    updateCurrentPage({ ...page, drawingAnnotations: drawings });
+  function scrollToPage(pageNumber: number) {
+    pageRefs.current[pageNumber]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  const selectedText = page.textAnnotations.find((item) => item.id === selectedTextId);
+  function scrollToNote(note: TextAnnotation) {
+    scrollToPage(note.pageNumber);
+    setSelectedTextId(note.id);
+  }
+
+  function exportPdf() {
+    window.print();
+  }
 
   return (
     <main className="app-shell">
@@ -182,13 +139,32 @@ export default function App() {
         <div><h1>Study Notebook</h1><p>{project.name}</p></div>
         <div className="file-actions">
           <label className="button primary">上传 PDF<input type="file" accept="application/pdf" onChange={handleFileUpload} /></label>
+          <button onClick={exportPdf}>导出 PDF</button>
           <button onClick={() => downloadJson(`${project.name || 'annotations'}.json`, project)}>导出 JSON</button>
           <button onClick={() => { clearSavedNotebook(); location.reload(); }}>清空</button>
         </div>
       </header>
 
       <section className="workspace">
-        <aside className="sidebar"><strong>页面</strong><div className="page-list">{Array.from({ length: pdfDoc?.numPages ?? 0 }, (_, index) => index + 1).map((page) => <button key={page} className={page === pageNumber ? 'active' : ''} onClick={() => setPageNumber(page)}>第 {page} 页</button>)}</div></aside>
+        <aside className="sidebar">
+          <strong>笔记</strong>
+          <div className="note-list">
+            {notes.length ? notes.map((note) => (
+              <button key={note.id} className={selectedTextId === note.id ? 'active' : ''} onClick={() => scrollToNote(note)}>
+                <span>第 {note.pageNumber} 页</span>
+                <em>{note.text.trim() || '空白文字笔记'}</em>
+              </button>
+            )) : <p>还没有文字笔记</p>}
+          </div>
+          <strong className="sidebar-heading">页面</strong>
+          <div className="page-list">
+            {Array.from({ length: pdfDoc?.numPages ?? 0 }, (_, index) => index + 1).map((pageNumber) => {
+              const page = ensurePage(project, pageNumber);
+              return <button key={pageNumber} onClick={() => scrollToPage(pageNumber)}>第 {pageNumber} 页<span>{pageSummary(page)}</span></button>;
+            })}
+          </div>
+        </aside>
+
         <section className="editor-panel">
           <div className="toolbar">
             {(['select', 'text', 'highlight', 'pen', 'eraser'] as ToolType[]).map((item) => <button key={item} className={tool === item ? 'active' : ''} onClick={() => setTool(item)}>{item}</button>)}
@@ -198,21 +174,153 @@ export default function App() {
             <label>字色 <input type="color" value={textColor} onChange={(event) => setTextColor(event.target.value)} /></label>
             <label>字号 <input type="number" min="10" max="72" value={fontSize} onChange={(event) => setFontSize(Number(event.target.value))} /></label>
             <button className={bold ? 'active' : ''} onClick={() => setBold((value) => !value)}>B</button>
-            <button disabled={!selectedText} onClick={applyTextStyle}>应用文本样式</button>
+            <button disabled={!selectedTextId} onClick={applyTextStyle}>应用文本样式</button>
           </div>
-          <div className="pager"><button disabled={!pdfDoc || pageNumber <= 1} onClick={() => setPageNumber((page) => page - 1)}>上一页</button><span>{pdfDoc ? `${pageNumber} / ${pdfDoc.numPages}` : '请上传 PDF 开始批注'}</span><button disabled={!pdfDoc || pageNumber >= pdfDoc.numPages} onClick={() => setPageNumber((page) => page + 1)}>下一页</button></div>
-          <div className="document-stage"><div ref={stageRef} className="page-layer" style={{ width: pageSize.width, height: pageSize.height }} onPointerDown={handleLayerPointerDown} onPointerMove={handleLayerPointerMove} onPointerUp={handleLayerPointerUp} onPointerCancel={handleLayerPointerUp}>
-            <canvas ref={canvasRef} />
-            <svg className="ink-layer" width={pageSize.width} height={pageSize.height}>{[...page.drawingAnnotations, ...(activeDrawing ? [activeDrawing] : [])].map((drawing) => <path key={drawing.id} d={pointsToPath(drawing.points)} fill="none" stroke={drawing.color} strokeWidth={drawing.strokeWidth} opacity={drawing.opacity} strokeLinecap="round" strokeLinejoin="round" />)}</svg>
-            {page.textAnnotations.map((text) => <div key={text.id} className={`text-note ${selectedTextId === text.id ? 'selected' : ''}`} style={{ left: text.x, top: text.y, width: text.width, minHeight: text.height, color: text.color, fontSize: text.fontSize, fontWeight: text.bold ? 700 : 400 }} onPointerDown={(event) => event.stopPropagation()}>
-              <div className="drag-handle" onPointerDown={(event) => { event.stopPropagation(); setSelectedTextId(text.id); if (!stageRef.current) return; const point = pointInElement(event, stageRef.current); setDraggingText({ id: text.id, dx: point.x - text.x, dy: point.y - text.y }); }}>拖动</div>
-              <textarea value={text.text} onFocus={() => setSelectedTextId(text.id)} onChange={(event) => updateText(text.id, { text: event.target.value })} />
-              <button className="delete-note" onClick={() => deleteText(text.id)}>删除</button>
-            </div>)}
+
+          <div className="document-stage">
             {!pdfDoc && <div className="empty-state">上传 PDF 后即可开始做学习批注</div>}
-          </div></div>
+            {pdfDoc && Array.from({ length: pdfDoc.numPages }, (_, index) => index + 1).map((pageNumber) => (
+              <PdfPageSurface
+                key={pageNumber}
+                pdfDoc={pdfDoc}
+                pageNumber={pageNumber}
+                page={ensurePage(project, pageNumber)}
+                pageSize={pageSizes[pageNumber] ?? defaultPageSize}
+                setPageSize={(size) => setPageSizes((current) => ({ ...current, [pageNumber]: size }))}
+                tool={tool}
+                color={color}
+                strokeWidth={strokeWidth}
+                opacity={opacity}
+                fontSize={fontSize}
+                textColor={textColor}
+                bold={bold}
+                selectedTextId={selectedTextId}
+                activeDrawing={activeDrawing?.pageNumber === pageNumber ? activeDrawing : null}
+                draggingText={draggingText}
+                pageRef={(element) => { pageRefs.current[pageNumber] = element; }}
+                setTool={setTool}
+                setSelectedTextId={setSelectedTextId}
+                setActiveDrawing={setActiveDrawing}
+                setDraggingText={setDraggingText}
+                updatePage={updatePage}
+                updateText={updateText}
+                deleteText={deleteText}
+              />
+            ))}
+          </div>
         </section>
       </section>
     </main>
+  );
+}
+
+interface PdfPageSurfaceProps {
+  pdfDoc: PDFDocumentProxy;
+  pageNumber: number;
+  page: PageAnnotation;
+  pageSize: PageSize;
+  setPageSize: (size: PageSize) => void;
+  tool: ToolType;
+  color: string;
+  strokeWidth: number;
+  opacity: number;
+  fontSize: number;
+  textColor: string;
+  bold: boolean;
+  selectedTextId: string | null;
+  activeDrawing: DrawingAnnotation | null;
+  draggingText: DragState;
+  pageRef: (element: HTMLDivElement | null) => void;
+  setTool: (tool: ToolType) => void;
+  setSelectedTextId: (id: string | null) => void;
+  setActiveDrawing: (drawing: DrawingAnnotation | null) => void;
+  setDraggingText: (dragging: DragState) => void;
+  updatePage: (page: PageAnnotation) => void;
+  updateText: (pageNumber: number, id: string, patch: Partial<TextAnnotation>) => void;
+  deleteText: (pageNumber: number, id: string) => void;
+}
+
+function PdfPageSurface(props: PdfPageSurfaceProps) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function renderPage() {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const pdfPage = await props.pdfDoc.getPage(props.pageNumber);
+      const viewport = pdfPage.getViewport({ scale: 1.25 });
+      const context = canvas.getContext('2d');
+      if (!context) return;
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      props.setPageSize({ width: viewport.width, height: viewport.height });
+      await pdfPage.render({ canvasContext: context, viewport }).promise;
+      if (cancelled) context.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    renderPage().catch(console.error);
+    return () => { cancelled = true; };
+  }, [props.pdfDoc, props.pageNumber]);
+
+  function eraseAt(x: number, y: number) {
+    const hitText = props.page.textAnnotations.find((item) => x >= item.x && x <= item.x + item.width && y >= item.y && y <= item.y + item.height);
+    if (hitText) {
+      props.deleteText(props.pageNumber, hitText.id);
+      return;
+    }
+    const drawings = props.page.drawingAnnotations.filter((drawing) => !drawing.points.some((point, index) => index % 2 === 0 && Math.hypot(point - x, drawing.points[index + 1] - y) < Math.max(12, drawing.strokeWidth)));
+    props.updatePage({ ...props.page, drawingAnnotations: drawings });
+  }
+
+  function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    const point = pointInElement(event, event.currentTarget);
+    if (props.tool === 'text') {
+      const annotation: TextAnnotation = { id: crypto.randomUUID(), pageNumber: props.pageNumber, x: point.x, y: point.y, width: 260, height: 72, text: '', fontSize: props.fontSize, color: props.textColor, bold: props.bold };
+      props.updatePage({ ...props.page, textAnnotations: [...props.page.textAnnotations, annotation] });
+      props.setSelectedTextId(annotation.id);
+      props.setTool('select');
+      return;
+    }
+    if (props.tool === 'pen' || props.tool === 'highlight') {
+      const drawing: DrawingAnnotation = { id: crypto.randomUUID(), pageNumber: props.pageNumber, tool: props.tool, points: [point.x, point.y], color: props.color, strokeWidth: props.tool === 'highlight' ? props.strokeWidth : Math.max(2, Math.round(props.strokeWidth / 3)), opacity: props.tool === 'highlight' ? props.opacity : Math.max(props.opacity, 0.75) };
+      props.setActiveDrawing(drawing);
+      event.currentTarget.setPointerCapture(event.pointerId);
+      return;
+    }
+    if (props.tool === 'eraser') {
+      eraseAt(point.x, point.y);
+      return;
+    }
+    props.setSelectedTextId(null);
+  }
+
+  function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    const point = pointInElement(event, event.currentTarget);
+    if (props.activeDrawing) props.setActiveDrawing({ ...props.activeDrawing, points: [...props.activeDrawing.points, point.x, point.y] });
+    if (props.draggingText?.pageNumber === props.pageNumber) {
+      props.updatePage({ ...props.page, textAnnotations: props.page.textAnnotations.map((item) => item.id === props.draggingText?.id ? { ...item, x: point.x - props.draggingText.dx, y: point.y - props.draggingText.dy } : item) });
+    }
+  }
+
+  function handlePointerUp() {
+    if (props.activeDrawing && props.activeDrawing.points.length > 3) props.updatePage({ ...props.page, drawingAnnotations: [...props.page.drawingAnnotations, props.activeDrawing] });
+    props.setActiveDrawing(null);
+    props.setDraggingText(null);
+  }
+
+  return (
+    <section className="pdf-page-block" ref={props.pageRef}>
+      <div className="page-label">第 {props.pageNumber} 页</div>
+      <div ref={stageRef} className="page-layer" style={{ width: props.pageSize.width, height: props.pageSize.height }} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp}>
+        <canvas ref={canvasRef} />
+        <svg className="ink-layer" width={props.pageSize.width} height={props.pageSize.height}>{[...props.page.drawingAnnotations, ...(props.activeDrawing ? [props.activeDrawing] : [])].map((drawing) => <path key={drawing.id} d={pointsToPath(drawing.points)} fill="none" stroke={drawing.color} strokeWidth={drawing.strokeWidth} opacity={drawing.opacity} strokeLinecap="round" strokeLinejoin="round" />)}</svg>
+        {props.page.textAnnotations.map((text) => <div key={text.id} data-note-id={text.id} className={`text-note ${props.selectedTextId === text.id ? 'selected' : ''}`} style={{ left: text.x, top: text.y, width: text.width, minHeight: text.height, color: text.color, fontSize: text.fontSize, fontWeight: text.bold ? 700 : 400 }} onPointerDown={(event) => event.stopPropagation()}>
+          <div className="drag-handle" onPointerDown={(event) => { event.stopPropagation(); props.setSelectedTextId(text.id); if (!stageRef.current) return; const point = pointInElement(event, stageRef.current); props.setDraggingText({ id: text.id, pageNumber: props.pageNumber, dx: point.x - text.x, dy: point.y - text.y }); }}>拖动</div>
+          <textarea autoFocus={props.selectedTextId === text.id && !text.text} placeholder="直接输入笔记" value={text.text} onFocus={() => props.setSelectedTextId(text.id)} onChange={(event) => props.updateText(props.pageNumber, text.id, { text: event.target.value })} />
+          <button className="delete-note" onClick={() => props.deleteText(props.pageNumber, text.id)}>删除</button>
+        </div>)}
+      </div>
+    </section>
   );
 }

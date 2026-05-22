@@ -35,13 +35,20 @@ button.active, .button.primary { background: #1f6feb; border-color: #1f6feb; col
 .file-actions { display: flex; align-items: center; gap: 8px; }
 .file-actions input[type="file"] { display: none; }
 
-.workspace { flex: 1; display: grid; grid-template-columns: 180px minmax(0, 1fr); min-height: 0; }
+.workspace { flex: 1; display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: 0; }
 .sidebar { background: #f7f9fb; border-right: 1px solid #d7dee8; padding: 16px 12px; overflow: auto; }
-.page-list { display: grid; gap: 8px; margin-top: 12px; }
-.page-list button { width: 100%; justify-content: flex-start; }
+.sidebar-heading { display: block; margin-top: 22px; }
+.note-list, .page-list { display: grid; gap: 8px; margin-top: 12px; }
+.note-list p { margin: 0; color: #64748b; font-size: 14px; }
+.note-list button, .page-list button { width: 100%; height: auto; min-height: 48px; text-align: left; display: grid; align-content: center; gap: 3px; }
+.note-list span, .page-list span { color: #64748b; font-size: 12px; }
+.note-list em { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-style: normal; }
 
 .editor-panel { min-width: 0; display: flex; flex-direction: column; }
 .toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 4;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -54,9 +61,9 @@ button.active, .button.primary { background: #1f6feb; border-color: #1f6feb; col
 .toolbar input[type="number"] { width: 70px; min-height: 34px; border: 1px solid #c8d1dc; border-radius: 6px; padding: 0 8px; }
 .toolbar input[type="range"] { width: 96px; }
 
-.pager { height: 52px; display: flex; align-items: center; justify-content: center; gap: 12px; background: #ffffff; border-bottom: 1px solid #d7dee8; }
-.pager span { min-width: 150px; text-align: center; color: #45556c; }
-.document-stage { flex: 1; overflow: auto; padding: 24px; display: grid; place-items: start center; }
+.document-stage { flex: 1; overflow: auto; padding: 24px; display: grid; justify-items: center; align-content: start; gap: 28px; }
+.pdf-page-block { display: grid; justify-items: center; gap: 8px; }
+.page-label { color: #64748b; font-size: 13px; }
 .page-layer { position: relative; background: #ffffff; box-shadow: 0 18px 50px rgba(21, 31, 48, 0.18); touch-action: none; }
 .page-layer canvas, .ink-layer { position: absolute; inset: 0; width: 100%; height: 100%; }
 .ink-layer { pointer-events: none; }
@@ -65,45 +72,53 @@ button.active, .button.primary { background: #1f6feb; border-color: #1f6feb; col
   position: absolute;
   display: flex;
   flex-direction: column;
-  border: 1px solid rgba(31, 111, 235, 0.25);
-  background: rgba(255, 255, 255, 0.82);
-  border-radius: 6px;
-  overflow: hidden;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  overflow: visible;
+  box-shadow: none;
 }
-.text-note.selected { border-color: #1f6feb; }
+.text-note:hover, .text-note.selected { border-color: rgba(31, 111, 235, 0.6); }
 .drag-handle {
-  height: 24px;
-  padding: 3px 8px;
+  height: 22px;
+  padding: 2px 8px;
   background: rgba(31, 111, 235, 0.12);
   color: #1f4fa3;
   font-size: 12px;
   cursor: move;
   user-select: none;
+  opacity: 0;
+  pointer-events: none;
 }
+.text-note:hover .drag-handle, .text-note.selected .drag-handle { opacity: 1; pointer-events: auto; }
 .text-note textarea {
   flex: 1;
   width: 100%;
-  min-height: 60px;
+  min-height: 44px;
   border: 0;
   resize: vertical;
-  padding: 8px;
+  padding: 2px 4px;
   background: transparent;
   color: inherit;
   font: inherit;
   font-weight: inherit;
   outline: none;
 }
+.text-note textarea::placeholder { color: rgba(100, 116, 139, 0.7); }
 .delete-note {
-  align-self: flex-end;
+  position: absolute;
+  right: 0;
+  bottom: -30px;
   min-height: 26px;
-  margin: 0 6px 6px;
   padding: 0 8px;
   font-size: 12px;
+  opacity: 0;
+  pointer-events: none;
 }
+.text-note:hover .delete-note, .text-note.selected .delete-note { opacity: 1; pointer-events: auto; }
 .empty-state {
-  position: absolute;
-  inset: 0;
+  margin-top: 120px;
+  min-height: 360px;
   display: grid;
   place-items: center;
   color: #64748b;
@@ -114,6 +129,16 @@ button.active, .button.primary { background: #1f6feb; border-color: #1f6feb; col
   .topbar { height: auto; align-items: flex-start; flex-direction: column; }
   .workspace { grid-template-columns: 1fr; }
   .sidebar { border-right: 0; border-bottom: 1px solid #d7dee8; }
-  .page-list { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); }
-  .document-stage { padding: 12px; place-items: start; }
+  .page-list, .note-list { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+  .document-stage { padding: 12px; }
+}
+
+@media print {
+  :root { background: #ffffff; }
+  .topbar, .sidebar, .toolbar, .page-label, .drag-handle, .delete-note { display: none !important; }
+  .workspace, .editor-panel, .document-stage { display: block; overflow: visible; padding: 0; }
+  .app-shell { display: block; }
+  .pdf-page-block { break-after: page; page-break-after: always; display: block; }
+  .page-layer { box-shadow: none; margin: 0 auto; }
+  .text-note { border-color: transparent !important; }
 }
