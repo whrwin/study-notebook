@@ -12,6 +12,13 @@ type PageSize = { width: number; height: number };
 type DragState = { id: string; pageNumber: number; dx: number; dy: number } | null;
 
 const defaultPageSize: PageSize = { width: 720, height: 940 };
+const toolLabels: Record<ToolType, string> = {
+  select: '选择',
+  text: '文字',
+  highlight: '荧光笔',
+  pen: '画笔',
+  eraser: '橡皮擦',
+};
 
 const defaultProject = (): DocumentProject => {
   const now = new Date().toISOString();
@@ -68,6 +75,9 @@ export default function App() {
   const notes = useMemo(() => {
     return project.pages.flatMap((page) => page.textAnnotations.map((note) => ({ ...note, pageNumber: page.pageNumber })));
   }, [project.pages]);
+
+  const inkCount = useMemo(() => project.pages.reduce((total, page) => total + page.drawingAnnotations.length, 0), [project.pages]);
+  const pageCount = pdfDoc?.numPages ?? 0;
 
   useEffect(() => saveProject(project), [project]);
   useEffect(() => {
@@ -136,49 +146,81 @@ export default function App() {
   return (
     <main className="app-shell">
       <header className="topbar">
-        <div><h1>Study Notebook</h1><p>{project.name}</p></div>
+        <div className="brand-block">
+          <div className="brand-mark">SN</div>
+          <div>
+            <h1>Study Notebook</h1>
+            <p>{pdfDoc ? project.name : '把资料整理成自己的学习脉络'}</p>
+          </div>
+        </div>
+        <div className="topbar-center" aria-label="项目概览">
+          <span><strong>{pageCount}</strong> 页</span>
+          <span><strong>{notes.length}</strong> 条文字</span>
+          <span><strong>{inkCount}</strong> 条笔迹</span>
+        </div>
         <div className="file-actions">
           <label className="button primary">上传 PDF<input type="file" accept="application/pdf" onChange={handleFileUpload} /></label>
           <button onClick={exportPdf}>导出 PDF</button>
           <button onClick={() => downloadJson(`${project.name || 'annotations'}.json`, project)}>导出 JSON</button>
-          <button onClick={() => { clearSavedNotebook(); location.reload(); }}>清空</button>
+          <button className="ghost-button" onClick={() => { clearSavedNotebook(); location.reload(); }}>清空</button>
         </div>
       </header>
 
       <section className="workspace">
         <aside className="sidebar">
-          <strong>笔记</strong>
-          <div className="note-list">
-            {notes.length ? notes.map((note) => (
-              <button key={note.id} className={selectedTextId === note.id ? 'active' : ''} onClick={() => scrollToNote(note)}>
-                <span>第 {note.pageNumber} 页</span>
-                <em>{note.text.trim() || '空白文字笔记'}</em>
-              </button>
-            )) : <p>还没有文字笔记</p>}
-          </div>
-          <strong className="sidebar-heading">页面</strong>
-          <div className="page-list">
-            {Array.from({ length: pdfDoc?.numPages ?? 0 }, (_, index) => index + 1).map((pageNumber) => {
-              const page = ensurePage(project, pageNumber);
-              return <button key={pageNumber} onClick={() => scrollToPage(pageNumber)}>第 {pageNumber} 页<span>{pageSummary(page)}</span></button>;
-            })}
-          </div>
+          <section className="sidebar-card notebook-card">
+            <span className="section-kicker">学习脉络</span>
+            <strong>我的笔记</strong>
+            <div className="note-list">
+              {notes.length ? notes.map((note) => (
+                <button key={note.id} className={selectedTextId === note.id ? 'active' : ''} onClick={() => scrollToNote(note)}>
+                  <span>第 {note.pageNumber} 页</span>
+                  <em>{note.text.trim() || '空白文字笔记'}</em>
+                </button>
+              )) : <p>还没有文字笔记</p>}
+            </div>
+          </section>
+
+          <section className="sidebar-card page-card">
+            <span className="section-kicker">阅读位置</span>
+            <strong>页面</strong>
+            <div className="page-list">
+              {Array.from({ length: pageCount }, (_, index) => index + 1).map((pageNumber) => {
+                const page = ensurePage(project, pageNumber);
+                return <button key={pageNumber} onClick={() => scrollToPage(pageNumber)}>第 {pageNumber} 页<span>{pageSummary(page)}</span></button>;
+              })}
+            </div>
+          </section>
         </aside>
 
         <section className="editor-panel">
           <div className="toolbar">
-            {(['select', 'text', 'highlight', 'pen', 'eraser'] as ToolType[]).map((item) => <button key={item} className={tool === item ? 'active' : ''} onClick={() => setTool(item)}>{item}</button>)}
-            <label>笔色 <input type="color" value={color} onChange={(event) => setColor(event.target.value)} /></label>
-            <label>粗细 <input type="range" min="2" max="36" value={strokeWidth} onChange={(event) => setStrokeWidth(Number(event.target.value))} /></label>
-            <label>透明 <input type="range" min="0.1" max="1" step="0.05" value={opacity} onChange={(event) => setOpacity(Number(event.target.value))} /></label>
-            <label>字色 <input type="color" value={textColor} onChange={(event) => setTextColor(event.target.value)} /></label>
-            <label>字号 <input type="number" min="10" max="72" value={fontSize} onChange={(event) => setFontSize(Number(event.target.value))} /></label>
-            <button className={bold ? 'active' : ''} onClick={() => setBold((value) => !value)}>B</button>
-            <button disabled={!selectedTextId} onClick={applyTextStyle}>应用文本样式</button>
+            <div className="toolbar-group tool-switcher">
+              {(['select', 'text', 'highlight', 'pen', 'eraser'] as ToolType[]).map((item) => <button key={item} className={tool === item ? 'active' : ''} onClick={() => setTool(item)}>{toolLabels[item]}</button>)}
+            </div>
+            <div className="toolbar-group">
+              <label>笔色 <input type="color" value={color} onChange={(event) => setColor(event.target.value)} /></label>
+              <label>粗细 <input type="range" min="2" max="36" value={strokeWidth} onChange={(event) => setStrokeWidth(Number(event.target.value))} /></label>
+              <label>透明 <input type="range" min="0.1" max="1" step="0.05" value={opacity} onChange={(event) => setOpacity(Number(event.target.value))} /></label>
+            </div>
+            <div className="toolbar-group">
+              <label>字色 <input type="color" value={textColor} onChange={(event) => setTextColor(event.target.value)} /></label>
+              <label>字号 <input type="number" min="10" max="72" value={fontSize} onChange={(event) => setFontSize(Number(event.target.value))} /></label>
+              <button className={bold ? 'active' : ''} onClick={() => setBold((value) => !value)}>B</button>
+              <button disabled={!selectedTextId} onClick={applyTextStyle}>应用</button>
+            </div>
           </div>
 
           <div className="document-stage">
-            {!pdfDoc && <div className="empty-state">上传 PDF 后即可开始做学习批注</div>}
+            {!pdfDoc && (
+              <div className="empty-state">
+                <div className="empty-panel">
+                  <span className="section-kicker">开始</span>
+                  <h2>选择一份 PDF</h2>
+                  <label className="button primary">上传 PDF<input type="file" accept="application/pdf" onChange={handleFileUpload} /></label>
+                </div>
+              </div>
+            )}
             {pdfDoc && Array.from({ length: pdfDoc.numPages }, (_, index) => index + 1).map((pageNumber) => (
               <PdfPageSurface
                 key={pageNumber}
