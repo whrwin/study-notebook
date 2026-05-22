@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ChangeEvent, PointerEvent as ReactPointerEvent } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import type { DocumentProject, DrawingAnnotation, PageAnnotation, TextAnnotation, ToolType } from './types/annotations';
@@ -22,7 +23,7 @@ const upsertPage = (project: DocumentProject, page: PageAnnotation): DocumentPro
   pages: [...project.pages.filter((item) => item.pageNumber !== page.pageNumber), page].sort((a, b) => a.pageNumber - b.pageNumber),
 });
 
-const pointInElement = (event: React.PointerEvent, element: HTMLElement) => {
+const pointInElement = (event: ReactPointerEvent, element: HTMLElement) => {
   const rect = element.getBoundingClientRect();
   return { x: event.clientX - rect.left, y: event.clientY - rect.top };
 };
@@ -100,7 +101,7 @@ export default function App() {
     };
   }, [pdfDoc, pageNumber]);
 
-  async function handleFileUpload(event: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFileUpload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
     const dataUrl = await fileToDataUrl(file);
@@ -113,7 +114,7 @@ export default function App() {
     setProject((current) => upsertPage(current, nextPage));
   }
 
-  function handleLayerPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+  function handleLayerPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     const point = pointInElement(event, event.currentTarget);
     if (tool === 'text') {
       const annotation: TextAnnotation = { id: crypto.randomUUID(), pageNumber, x: point.x, y: point.y, width: 220, height: 88, text: '新文本', fontSize, color: textColor, bold };
@@ -135,7 +136,7 @@ export default function App() {
     setSelectedTextId(null);
   }
 
-  function handleLayerPointerMove(event: React.PointerEvent<HTMLDivElement>) {
+  function handleLayerPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
     const point = pointInElement(event, event.currentTarget);
     if (activeDrawing) setActiveDrawing({ ...activeDrawing, points: [...activeDrawing.points, point.x, point.y] });
     if (draggingText) {
