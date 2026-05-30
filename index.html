@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>错题助手</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>错题助手</h1>
+        <p id="quoteText">学而不思则罔，思而不学则殆。——孔子</p>
+        <button id="sidebarToggleBtn" class="secondary compactBtn" type="button">收起左侧栏</button>
+        <button id="topbarToggleBtn" class="secondary compactBtn" type="button">收起顶部栏</button>
+      </div>
+      <div class="stats" aria-label="题库统计">
+        <div><strong id="totalCount">0</strong><span>题目</span></div>
+        <div><strong id="wrongCount">0</strong><span>错题</span></div>
+        <div><strong id="paperCount">0</strong><span>本卷</span></div>
+        <div><strong id="dueCount">0</strong><span>今日复习</span></div>
+      </div>
+    </header>
+
+    <main class="layout">
+      <aside class="panel sidebar">
+        <nav class="tabs" aria-label="功能切换">
+          <button class="tab active" data-view="bankView">题库</button>
+          <button class="tab" data-view="paperView">试卷</button>
+          <button class="tab" data-view="recentView">最近题目</button>
+          <button class="tab" data-view="wrongView">错题卷</button>
+          <button class="tab" data-view="folderView">文件夹</button>
+          <button class="tab" data-view="deletedView">最近删除</button>
+        </nav>
+
+        <section class="section">
+          <h2>导入题目</h2>
+          <label class="fileDrop" for="fileInput">
+            <span>选择 JSON 或 CSV 文件</span>
+            <small>字段：题目、答案、解析、选项、科目、难度</small>
+          </label>
+          <input id="fileInput" type="file" accept=".json,.csv,text/csv,application/json" />
+          <button id="sampleBtn" class="secondary" type="button">载入示例</button>
+          <div class="pasteImport">
+            <textarea
+              id="pasteInput"
+              placeholder="把题目、答案、解析粘贴到这里。支持格式：题目：... 答案：... 解析：..."
+            ></textarea>
+            <small class="mathTip">
+              短公式请写在句子里：\(r&gt;w\)。重要公式单独写：$$y=\sqrt{K+L}$$。不要把每个短公式都单独用 $$...$$ 包起来，否则会产生较大空白。
+            </small>
+            <div class="pasteActions">
+              <button id="pasteImportBtn" type="button">粘贴导入</button>
+              <small>适合从文档、网页或 GPT 回复里批量复制题目。</small>
+            </div>
+            <details class="pasteSample">
+              <summary>查看网页导入格式样例</summary>
+              <pre>### 第 1 题
+科目：中级微观经济学
+章节：第5章 选择
+难度：普通
+题型：计算题
+
+【题目】
+某消费者效用函数为：
+
+$$U(x_1,x_2)=x_1x_2$$
+
+【选项】
+无
+
+【答案】
+$$x_1^*=\frac{m}{2p_1}$$
+
+【解析】
+这是柯布-道格拉斯效用函数。
+
+【公式】
+$$MRS=\frac{MU_1}{MU_2}=\frac{p_1}{p_2}$$
+
+【易错点】
+不要机械套用切点条件。</pre>
+            </details>
+          </div>
+        </section>
+
+        <section class="section">
+          <h2>快速录入</h2>
+          <form id="questionForm" class="form">
+            <input id="subjectInput" placeholder="科目，如数学" />
+            <select id="difficultyInput" aria-label="难度">
+              <option value="普通">普通</option>
+              <option value="简单">简单</option>
+              <option value="较难">较难</option>
+              <option value="压轴">压轴</option>
+            </select>
+            <textarea id="stemInput" required placeholder="题目内容"></textarea>
+            <textarea id="optionsInput" placeholder="选项，每行一个；没有可留空"></textarea>
+            <input id="answerInput" required placeholder="答案" />
+            <textarea id="explainInput" placeholder="解析"></textarea>
+            <button type="submit">添加题目</button>
+          </form>
+        </section>
+
+        <section class="section">
+          <h2>组卷设置</h2>
+          <p class="sectionHint">“最近导入试卷”只使用最近一次导入的题目；“全部题库试卷”会使用题库里的所有题。</p>
+          <button id="makeRecentPaperSideBtn" type="button">生成最近导入试卷</button>
+          <button id="makePaperBtn" class="secondary" type="button">生成全部题库试卷</button>
+          <button id="makeDuePaperBtn" class="secondary" type="button">生成今日复习</button>
+          <button id="makeReviewPaperBtn" class="secondary" type="button">生成复习卷</button>
+          <button id="makeWrongPaperBtn" class="danger" type="button">生成全部错题卷</button>
+        </section>
+
+        <section class="section">
+          <h2>文件夹</h2>
+          <p class="sectionHint">新建文件夹，把当前试卷保存进去，之后可以再次打开。</p>
+          <div class="folderCreate">
+            <input id="folderNameInput" placeholder="文件夹名称" />
+            <button id="createFolderBtn" type="button">新建</button>
+          </div>
+          <select id="folderSelect" aria-label="选择文件夹">
+            <option value="">选择文件夹</option>
+          </select>
+          <input id="savedPaperNameInput" placeholder="试卷名称，如 第一次练习" />
+          <button id="savePaperToFolderBtn" class="secondary" type="button">保存当前试卷</button>
+          <button id="saveWrongToFolderBtn" class="secondary" type="button">保存错题本</button>
+        </section>
+
+        <section class="section">
+          <h2>数据备份</h2>
+          <p class="sectionHint">把题库、错题、标签和复习进度导出保存，也可以从备份文件恢复。</p>
+          <p class="safetyHint">题库保存在当前浏览器，请定期导出备份。清理浏览器数据可能导致题库丢失。</p>
+          <button id="exportDataBtn" class="secondary" type="button">导出备份</button>
+          <button id="repairMathBtn" class="secondary" type="button">修复已有公式</button>
+          <label class="backupLabel" for="backupInput">恢复备份</label>
+          <input id="backupInput" type="file" accept=".json,application/json" />
+        </section>
+      </aside>
+
+      <section class="workspace">
+        <div id="bankView" class="view active">
+          <div class="toolbar">
+            <div>
+              <h2>题库</h2>
+              <p>可搜索题干、答案、解析、科目。</p>
+            </div>
+            <div class="bankTools">
+              <input id="searchInput" class="search" placeholder="搜索题目" />
+              <div class="filterTools">
+                <select id="tagFilter" aria-label="按标签筛选">
+                  <option value="">全部标签</option>
+                </select>
+                <button id="makeFilteredPaperBtn" class="secondary" type="button">用筛选结果组卷</button>
+                <button id="clearFiltersBtn" class="secondary" type="button">清除筛选</button>
+              </div>
+              <div class="batchTools">
+                <button id="selectVisibleBtn" class="secondary" type="button">全选当前</button>
+                <button id="clearSelectionBtn" class="secondary" type="button">取消选择</button>
+                <input id="tagInput" placeholder="输入标签，如 极限、易错" />
+                <button id="applyTagBtn" type="button">批量打标签</button>
+                <button id="makeSelectedPaperBtn" class="secondary" type="button">选中题组卷</button>
+                <button id="deleteSelectedBtn" class="danger" type="button">批量删除</button>
+                <small id="selectedCount">已选 0 题</small>
+              </div>
+            </div>
+          </div>
+          <div id="questionList" class="questionList emptyState"></div>
+        </div>
+
+        <div id="paperView" class="view">
+          <div class="toolbar">
+            <div>
+              <h2>当前试卷</h2>
+              <p id="practiceProgress">已完成 0 / 0</p>
+            </div>
+            <div class="toolbarActions">
+              <button id="toggleAnswersBtn" class="secondary" type="button">显示答案</button>
+              <button id="resetPaperBtn" class="secondary" type="button">重做本卷</button>
+              <button id="exportPaperWordBtn" class="secondary" type="button">导出 Word</button>
+              <button id="exportPaperPdfBtn" class="secondary" type="button">导出 PDF</button>
+              <button id="printPaperBtn" class="secondary" type="button">打印</button>
+            </div>
+          </div>
+          <div id="paperList" class="questionList emptyState"></div>
+        </div>
+
+        <div id="recentView" class="view">
+          <div class="toolbar">
+            <div>
+              <h2>最近题目</h2>
+              <p>这里只保留最近一次导入的题目，方便单独组卷和保存。</p>
+            </div>
+            <div class="recentTools">
+              <input id="recentTagInput" placeholder="给最近题目加标签，如 第5章、选择" />
+              <button id="applyRecentTagBtn" type="button">给最近题目打标签</button>
+              <button id="makeRecentPaperBtn" class="secondary" type="button">最近题目组卷</button>
+            </div>
+          </div>
+          <div id="recentList" class="questionList emptyState"></div>
+        </div>
+
+        <div id="wrongView" class="view">
+          <div class="toolbar">
+            <div>
+              <h2>错题卷</h2>
+              <p>这里会收集你标记过的题目，可再次组卷。</p>
+            </div>
+            <div class="toolbarActions">
+              <button id="clearWrongBtn" class="secondary" type="button">清空错题标记</button>
+              <button id="exportWrongWordBtn" class="secondary" type="button">导出 Word</button>
+              <button id="exportWrongPdfBtn" class="secondary" type="button">导出 PDF</button>
+              <button id="printWrongBtn" class="secondary" type="button">打印</button>
+            </div>
+          </div>
+          <div id="wrongList" class="questionList emptyState"></div>
+        </div>
+
+        <div id="folderView" class="view">
+          <div class="toolbar">
+            <div>
+              <h2>文件夹</h2>
+              <p>这里保存你整理过的试卷，可以重新打开继续做。</p>
+            </div>
+          </div>
+          <div id="folderList" class="folderList emptyState"></div>
+        </div>
+
+        <div id="deletedView" class="view">
+          <div class="toolbar">
+            <div>
+              <h2>最近删除</h2>
+              <p>删除的题目会先放在这里，可以恢复或彻底删除。</p>
+            </div>
+            <div class="toolbarActions">
+              <button id="clearDeletedBtn" class="danger" type="button">一键删除所有</button>
+            </div>
+          </div>
+          <div id="deletedList" class="questionList emptyState"></div>
+        </div>
+      </section>
+    </main>
+
+    <div id="editorModal" class="modalOverlay" aria-hidden="true">
+      <section class="editorDialog" role="dialog" aria-modal="true" aria-labelledby="editorTitle">
+        <div class="editorHead">
+          <div>
+            <h2 id="editorTitle">编辑题目</h2>
+            <p>可修改题目、答案、解析，也可以把图片插入到指定位置。</p>
+          </div>
+          <button id="closeEditorBtn" class="secondary" type="button">关闭</button>
+        </div>
+
+        <form id="editForm" class="editorForm">
+          <div class="editorGrid">
+            <input id="editSubjectInput" placeholder="科目" />
+            <select id="editDifficultyInput" aria-label="难度">
+              <option value="普通">普通</option>
+              <option value="简单">简单</option>
+              <option value="较难">较难</option>
+              <option value="压轴">压轴</option>
+            </select>
+          </div>
+          <textarea id="editStemInput" required placeholder="题目内容"></textarea>
+          <textarea id="editOptionsInput" placeholder="选项，每行一个；没有可留空"></textarea>
+          <textarea id="editAnswerInput" required placeholder="答案"></textarea>
+          <textarea id="editExplainInput" placeholder="解析"></textarea>
+          <input id="editTagsInput" placeholder="标签，如 函数 易错" />
+
+          <div class="imageInsertBox">
+            <select id="imageTargetInput" aria-label="图片插入位置">
+              <option value="stem">插入到题目</option>
+              <option value="answer">插入到答案</option>
+              <option value="explanation">插入到解析</option>
+            </select>
+            <label class="backupLabel imageLabel" for="imageInput">选择图片插入</label>
+            <input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" />
+            <small>图片会保存在本地题库中，建议使用较小图片。</small>
+          </div>
+
+          <div class="editorActions">
+            <button type="submit">保存修改</button>
+            <button id="cancelEditBtn" class="secondary" type="button">取消</button>
+          </div>
+        </form>
+      </section>
+    </div>
+
+    <div id="importPreviewModal" class="modalOverlay" aria-hidden="true">
+      <section class="editorDialog previewDialog" role="dialog" aria-modal="true" aria-labelledby="previewTitle">
+        <div class="editorHead">
+          <div>
+            <h2 id="previewTitle">导入预览</h2>
+            <p id="previewSummary">请确认识别结果，再导入题库。</p>
+          </div>
+          <button id="closePreviewBtn" class="secondary" type="button">关闭</button>
+        </div>
+        <div class="previewToolbar">
+          <button id="selectAllPreviewBtn" class="secondary" type="button">全选</button>
+          <button id="clearPreviewSelectionBtn" class="secondary" type="button">全不选</button>
+          <small id="previewSelectedCount">已选 0 题</small>
+        </div>
+        <div id="previewList" class="previewList"></div>
+        <div class="editorActions previewActions">
+          <button id="confirmImportBtn" type="button">确认导入</button>
+          <button id="cancelImportBtn" class="secondary" type="button">取消</button>
+        </div>
+      </section>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    <script defer src="app.js"></script>
+  </body>
+</html>

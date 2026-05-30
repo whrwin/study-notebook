@@ -1,3 +1,77 @@
-# Study Notebook
+# 题库组卷助手
 
-Initial repository setup. The PDF annotation MVP is implemented in the feature branch for issue #1.
+一个纯静态的本地题库与错题组卷网页。可以导入题目、粘贴导入题目、渲染数学公式、整理错题本、自动组卷并打印。
+
+## 功能
+
+- 手动添加题目
+- JSON / CSV 文件导入
+- 粘贴导入题目，并自动识别题目、选项、答案、解析
+- 使用 KaTeX 渲染数学公式
+- 自动修正常见数学写法，并可一键修复已有题目的公式
+- 题库搜索与筛选
+- 错题本与错题次数记录
+- 批量打标签、批量删除、重复题自动清理
+- 自动组卷、最近题目、文件夹保存试卷
+- 最近删除区，支持恢复或彻底删除
+- 左侧栏可收起，方便专注查看题目
+- 打印试卷，导出 Word / PDF
+- 使用 localStorage 在用户自己的浏览器中保存数据
+
+## 使用方法
+
+1. 直接用浏览器打开 `index.html`。
+2. 在左侧选择 JSON / CSV 文件导入，或把题目文本粘贴到粘贴导入框。
+3. 在导入预览中确认题目、答案、解析无误后点击确认导入。
+4. 可以在题库中搜索、筛选、打标签、编辑题目。
+5. “最近题目”只显示最近一次导入的题目，适合把本次导入内容单独生成一张试卷。
+6. 点击组卷按钮生成试卷，答题后可标记错题。
+7. 在错题本中复习错题，并调整错题次数。
+8. 题库中可以勾选多题后批量删除；删除后可在“最近删除”里恢复或彻底删除。
+9. 如果旧题库里有公式没有渲染，可以先导出备份，再点击“修复已有公式”。
+10. 使用打印、导出 Word 或导出 PDF 保存试卷。
+
+## 部署方法
+
+这是一个纯静态网站，不需要后端服务。项目根目录只需要包含：
+
+- `index.html`
+- `style.css`
+- `app.js`
+
+可以直接部署到 GitHub Pages、Vercel 或 Netlify。
+
+## GitHub Pages 部署
+
+1. 新建一个 GitHub 仓库。
+2. 上传 `index.html`、`style.css`、`app.js`、`README.md` 和 `.gitignore`。
+3. 打开仓库的 Settings。
+4. 进入 Pages。
+5. Source 选择 `Deploy from a branch`。
+6. Branch 选择 `main`，目录选择 `/root`。
+7. 保存后等待 GitHub Pages 生成访问链接。
+
+## Vercel 部署
+
+1. 登录 Vercel。
+2. 点击 Add New Project。
+3. 选择这个项目仓库。
+4. Framework Preset 选择 Other。
+5. Build Command 留空。
+6. Output Directory 留空或使用项目根目录。
+7. 点击 Deploy。
+
+## Netlify 部署
+
+1. 登录 Netlify。
+2. 点击 Add new site。
+3. 可以选择从 Git 仓库导入，也可以直接拖拽项目文件夹。
+4. Build command 留空。
+5. Publish directory 使用项目根目录。
+6. 点击 Deploy。
+
+## 注意
+
+当前版本的数据保存在用户自己的浏览器 `localStorage` 中。不同设备、不同浏览器之间不会自动同步。如果清理浏览器数据，题库数据也可能被清除。建议定期使用网页里的“导出备份”功能保存数据。
+
+网站管理员看不到用户导入的题库。不同用户的数据互不共享；换设备使用时，需要先在旧设备导出备份，再在新设备恢复备份。
